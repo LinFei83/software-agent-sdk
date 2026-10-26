@@ -24,6 +24,7 @@ Routes: `GET /api/conversations/{conversation_id}/voice`,
 - `F35.offer-validation`: an SDP offer must be a nonempty string of at most 200000 characters and have no extra fields; a refused offer appends no controller event.
 - `F35.missing-key`: a valid-shaped offer without the configured OpenAI key is refused with 409, leaving text conversation history and status unchanged.
 - `F35.call-id-validation`: polling and deletion refuse invalid call IDs with 422, rather than forwarding arbitrary paths to a provider.
+- `F35.ts-client`: the built TypeScript `VoiceClient` reads availability and preserves API status errors from creation, polling and deletion against a real server; unauthorized calls fail with 401.
 - `F35.codex-unavailable`: an isolated Codex broker without a usable dedicated sign-in reports `available: false`, a specific reason, `provider: codex` and `delegation: server`; a failed setup leaves no usable call behind.
 - `F35.live-call`: an authorized real provider accepts a browser WebRTC offer, returns an SDP answer and audio, and the typed `VoiceClient` carries the same conversation ID through availability, creation, polling where supported, and ending.
 - `F35.saved-context`: reopening Voice on an old or condensed controller uses its active saved history, including its condensation summary and final answers; abandoned branches and old instructions cannot become a new request.
@@ -141,6 +142,42 @@ EVENTS_BEFORE=$(control-agent-server api GET "/api/conversations/$CAT/events/cou
   for METHOD in GET DELETE; do
     control-agent-server api "$METHOD" "/api/conversations/$CAT/voice/realtime/invalid!" --expect 422 --save F35.call-id-validation/invalid
   done
+  control-agent-server api GET "/api/conversations/$CAT/events/count" --check . eq "$EVENTS_BEFORE"
+  ```
+- **Typed Voice client against the real server (`F35.ts-client`).** This
+  covers the HTTP client independently of a WebRTC-capable browser.
+
+  Needs: `node`
+  ```sh
+  (cd clients/typescript && { test -d node_modules || npm ci; } && npm run build)
+  control-agent-server exec --timeout 30 --expect-output QA_F35_TS_OK --save F35.ts-client/program -- node --input-type=module -e '
+  import assert from "node:assert/strict";
+  import { VoiceClient } from "./clients/typescript/dist/clients.js";
+  import { HttpError } from "./clients/typescript/dist/client/http-client.js";
+  const id = process.argv[1];
+  const client = new VoiceClient({ host: process.env.AGENT_SERVER_URL, apiKey: process.env.SESSION_API_KEY });
+  const bad = new VoiceClient({ host: process.env.AGENT_SERVER_URL, apiKey: "qa-wrong-key" });
+  const statusIs = status => error => error instanceof HttpError && error.status === status;
+  try {
+    const state = await client.availability(id);
+    assert.equal(state.available, false);
+    assert.equal(state.provider, "openai");
+    assert.equal(state.delegation, "client");
+    assert.equal(state.reason, "missing_openai_api_key");
+    await assert.rejects(() => client.createCall(id, { sdp: "v=0" }), statusIs(409));
+    await assert.rejects(() => client.createCall(id, { sdp: "" }), statusIs(422));
+    await assert.rejects(() => client.getCallStatus(id, "qa-missing"), statusIs(404));
+    await assert.rejects(() => client.endCall(id, "qa-missing"), statusIs(404));
+    await assert.rejects(() => bad.availability(id), statusIs(401));
+    await assert.rejects(() => bad.createCall(id, { sdp: "v=0" }), statusIs(401));
+    await assert.rejects(() => bad.getCallStatus(id, "qa-missing"), statusIs(401));
+    await assert.rejects(() => bad.endCall(id, "qa-missing"), statusIs(401));
+    console.log("QA_F35_TS_OK");
+  } finally {
+    client.close();
+    bad.close();
+  }
+  ' "$CAT"
   control-agent-server api GET "/api/conversations/$CAT/events/count" --check . eq "$EVENTS_BEFORE"
   ```
 - **An unsigned dedicated Codex home (`F35.codex-unavailable`).** The same
