@@ -290,10 +290,18 @@ class TestFetchPluginIntegration:
         # A ref the source has still resolves from the cache.
         assert fetch_plugin(source, cache_dir=cache_dir, ref="v1.0.0") == cached
 
+        (plugin_repo / "version.txt").write_text("v2")
+        subprocess.run(["git", "add", "."], cwd=plugin_repo, check=True)
+        subprocess.run(["git", "commit", "-m", "v2"], cwd=plugin_repo, check=True)
+        subprocess.run(["git", "tag", "v2.0.0"], cwd=plugin_repo, check=True)
+        assert (cached / "version.txt").read_text() == "v1"
+        assert fetch_plugin(source, cache_dir=cache_dir, ref="v2.0.0") == cached
+        assert (cached / "version.txt").read_text() == "v2"
+
         # Without a ref, a failed fetch still falls back to the cached clone.
         shutil.rmtree(plugin_repo)
         assert fetch_plugin(source, cache_dir=cache_dir) == cached
-        assert (cached / "version.txt").read_text() == "v1"
+        assert (cached / "version.txt").read_text() == "v2"
         with pytest.raises(PluginFetchError):
             fetch_plugin(source, cache_dir=cache_dir, ref="no-such-ref")
 
