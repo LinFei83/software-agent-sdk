@@ -745,8 +745,9 @@ async def test_codex_routes_are_authenticated_scoped_and_backward_compatible(
     await app.state.codex_voice.close()
 
 
+@pytest.mark.parametrize("open_user_transcript", [False, True])
 async def test_new_speech_suppresses_pending_answer_without_losing_saved_result(
-    protocol, relay_events, tmp_path
+    protocol, relay_events, tmp_path, open_user_transcript
 ):
     events, state = relay_events
     entered, release = asyncio.Event(), asyncio.Event()
@@ -761,6 +762,18 @@ async def test_new_speech_suppresses_pending_answer_without_losing_saved_result(
     relay = CodexRelay(state.id, events, tmp_path / "home")
     try:
         await relay.start("v=0", "")
+        if open_user_transcript:
+            await relay.rpc(
+                "fixture/notify",
+                {
+                    "method": "thread/realtime/transcript/delta",
+                    "params": {
+                        "threadId": "bound-thread",
+                        "role": "user",
+                        "delta": "Remember coral.",
+                    },
+                },
+            )
         await relay.rpc("fixture/notify", _handoff())
         await asyncio.wait_for(entered.wait(), 3)
         await relay.rpc(

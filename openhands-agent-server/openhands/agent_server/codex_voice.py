@@ -433,9 +433,10 @@ class CodexRelay:
                     self.status.status = "listening"
         elif method == "thread/realtime/transcript/delta":
             if params.get("role") == "user" and str(params.get("delta", "")).strip():
-                if not self.user_transcript_active:
-                    self.input_generation += 1
-                    self.user_transcript_active = True
+                # Codex can keep one transcript open across a handoff and a
+                # spoken correction. Every new chunk supersedes pending speech.
+                self.input_generation += 1
+                self.user_transcript_active = True
             if params.get("role") == "assistant" and self.status.status != "thinking":
                 self.status.status = "speaking"
 
