@@ -183,11 +183,10 @@ consult each relevant package-level AGENTS.md.
 
 The `.pr/` directory is intentionally temporary by repository policy: the
 `PR Artifacts` workflow (`.github/workflows/pr-artifacts.yml`) treats it as
-PR-only reviewer context. It removes the directory after approval for
-same-repository PRs. If artifacts reach `main`, the workflow opens or updates a
-cleanup PR against `main`.
+PR-only reviewer context. After a PR merges to `main`, the workflow opens or
+updates a cleanup PR to remove the directory from `main`.
 
-When working on a PR that requires design documents, scripts meant for development-only, or other temporary artifacts that should NOT be merged to main, store them in a `.pr/` directory at the repository root.
+When working on a PR that requires design documents, scripts meant for development-only, or other temporary artifacts that should not remain on main, store them in a `.pr/` directory at the repository root.
 
 You can also use the `.pr/` directory for evidence, such as logs, live-tests, live-test summary files.
 
@@ -207,8 +206,7 @@ mkdir -p .pr
 ## How It Works
 
 1. **Notification**: When `.pr/` exists, a single comment is posted to the PR conversation alerting reviewers
-2. **Approval cleanup**: For same-repository PRs, approval removes `.pr/` from the PR branch via commit
-3. **Post-merge cleanup**: If `.pr/` reaches `main`, including through a fork PR, the workflow opens or updates a cleanup PR against `main`
+2. **Post-merge cleanup**: After a PR merges to `main`, the workflow opens or updates a cleanup PR to remove `.pr/` from `main`
 
 ## Important Notes
 
@@ -396,3 +394,23 @@ Note: This is separate from `persistence_dir` which is used for conversation sta
 </KNOWN_RACES_AND_GOTCHAS>
 
 </REPO>
+
+## Dependency release-age policy
+
+- Wait at least seven days after publication before adding or updating a
+  third-party npm or PyPI version, including transitive lockfile changes.
+  A weekly update schedule alone does not enforce this minimum age.
+- Keep Dependabot `cooldown.default-days: 7` for npm and Python version
+  updates, and preserve `tool.uv.exclude-newer = "7 days"` where configured.
+  Existing named first-party exceptions do not exempt their third-party
+  dependencies. Do not add broad exemptions or disable the cutoff to make a
+  resolver succeed.
+- Verify the exact version's publication/upload time from npm or PyPI metadata
+  (or artifact `upload-time` in `uv.lock`), not the package's creation date.
+  If age cannot be established, report the missing evidence rather than guess.
+- Security updates can bypass Dependabot cooldown. An urgent exception needs
+  explicit maintainer approval recorded in the PR with the package, version,
+  advisory/reason, and publication time. Agents must not grant themselves an
+  exception.
+- Use the committed lock for reproducible installs; review newly resolved
+  artifacts before committing a lock update.
