@@ -2,8 +2,9 @@
 
 Voice is a spoken interface to a saved Insider controller conversation. The
 OpenHands agent owns tools, skills, approvals, work and durable answers. A
-Realtime connection supplies audio; it must delegate each new user request to
-that same controller and speak only the result of that request. Ending speech
+Realtime connection supplies audio; it must delegate accepted user requests to
+that same controller, disclose unaccepted requests, and speak only the current
+request's result. Ending speech
 does not cancel accepted OpenHands work. The optional Codex broker uses a
 dedicated signed-in home and a disposable, restricted app-server process for
 each call; the default OpenAI broker uses the server's API key.
@@ -28,7 +29,7 @@ Routes: `GET /api/conversations/{conversation_id}/voice`,
 - `F35.codex-unavailable`: an isolated Codex broker without a usable dedicated sign-in reports `available: false`, a specific reason, `provider: codex` and `delegation: server`; a failed setup leaves no usable call behind.
 - `F35.live-call`: an authorized real provider accepts a browser WebRTC offer, returns an SDP answer and audio, and the typed `VoiceClient` carries the same conversation ID through availability, creation, polling where supported, and ending.
 - `F35.saved-context`: reopening Voice on an old or condensed controller uses its active saved history, including its condensation summary and final answers; abandoned branches and old instructions cannot become a new request.
-- `F35.delegation`: every spoken request, including greetings and recall, produces one durable user message and one actual OpenHands run in the bound controller; verified terminal/file/API work precedes its spoken answer, and the full answer stays saved when speech is shortened.
+- `F35.delegation`: every accepted spoken request, including greetings and recall, produces one durable user message and one actual OpenHands run in the bound controller; verified terminal/file/API work precedes its spoken answer, and the full answer stays saved when speech is shortened.
 - `F35.handoff-integrity`: duplicate Codex handoff IDs do not run twice; conflicting, invalid, busy or unaccepted requests are identified as not sent, while accepted failures or uncertain outcomes are not reported as success or retried silently.
 - `F35.approval-boundary`: Voice never approves a pending tool and never treats a waiting, paused, error or timed-out controller as completed; the user can inspect and continue the same saved work through normal conversation controls.
 - `F35.call-ownership-cleanup`: call IDs cannot be read or ended through another conversation; ending, losing polling or shutting down the server cleans up the call process and media, without splitting or cancelling an accepted append-and-run operation.
@@ -199,6 +200,17 @@ EVENTS_BEFORE=$(control-agent-server api GET "/api/conversations/$CAT/events/cou
   received audio counters and sanitized broker status. Poll only Codex calls.
   End through the client, then verify that polling the ended Codex call is 404.
   A returned SDP alone does not prove audible speech.
+  For the browser-owned permission failure, use Canvas's F29.voice-start native
+  denial recipe: stop only the owned browser and restart it with
+  `CONTROL_OPENHANDS_BROWSER_ARGS='--use-fake-device-for-media-stream --use-fake-ui-for-media-stream=deny'`.
+  Click Talk and require an actual `NotAllowedError`, no captured audio tracks,
+  no peer and no realtime POST; a typed request must still save and display its
+  reply in the same controller. This is native Chromium automatic media denial,
+  not a human prompt click or intercepted server response. The headless shell's
+  Permissions API may stay `prompt`; removing fake UI can instead yield
+  `NotSupportedError`, which does not prove permission denial. Restore the
+  original browser flags and verify a normal call. Keep browser denial evidence
+  distinct from the server's availability and setup-error checks.
 - **Resume active saved history (`F35.saved-context`), blocked in API-only replay.**
   Prerequisite: the live browser call above. Save a harmless unique fact by
   text, end Voice, condense through F10, reopen the same conversation and ask
@@ -221,6 +233,29 @@ EVENTS_BEFORE=$(control-agent-server api GET "/api/conversations/$CAT/events/cou
   no earlier answer offered as the new result. Label protocol-fixture evidence
   separately from real provider speech; do not inject fixtures into a shared
   server. The current API CLI does not inject upstream handoff frames.
+
+  A separate real-audio correction replay requires no protocol injection. On a
+  settled controller with Terminal enabled and no pending approval, say: “Use
+  Terminal to run only `sleep 20; printf 'OLD SEVENTEEN\n'`. When it finishes,
+  tell me the result.” Five seconds after that utterance ends, say: “Please do
+  not say the old result; tell me NEW TWENTY NINE instead.” Record input timing
+  and verify from saved actions that the first tool was still pending at the
+  correction. If not, repeat the timing probe. The same utterances and gap may
+  be supplied by the browser's recorded microphone fixture; identify synthetic
+  input separately from actual provider speech. Use Canvas's F29.voice-handoff
+  browser/media recipe and read this controller's saved events.
+
+  Require the first accepted request, terminal observation and final answer to
+  remain durable, with no replay or cancellation of its task. Observe through
+  completion and at least 60 seconds afterward: OLD SEVENTEEN must not be spoken
+  after the correction. The busy correction is not accepted: Voice must
+  explain that it was **not sent** and ask the user to repeat it after the task
+  finishes; it must never claim the correction was accepted, forwarded or queued.
+  Confirm that no extra durable request exists for that unaccepted correction.
+  Then say: “Use Terminal to calculate 2 + 3 and tell me the result.” Require
+  exactly one new durable request, its real tool observation and spoken answer
+  5. This tests stale-result suppression, truthful busy rejection and recovery;
+  it does not establish running-task steering or every audio barge-in race.
 - **Keep approvals pending (`F35.approval-boundary`), blocked in API-only replay.**
   Prerequisite: live audio and a controller configured for tool approval.
   Request a harmless workspace command, inspect the pending confirmation in
